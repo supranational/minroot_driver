@@ -1,0 +1,50 @@
+name: MacOS build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*.*.*"
+
+jobs:
+  macos-universal-build:
+    runs-on: macos-11
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: actions/cache@v3
+      with:
+        path: '**/libft4222'
+        key: ${{ runner.os }}-11-libft4222
+
+    - name: Build GMP
+      shell: bash
+      run: |
+        if [ ! -f libft4222/build/libgmp.a ]; then
+          curl -sSf https://gmplib.org/download/gmp/gmp-6.2.1.tar.xz | tar xf -
+          cd gmp-6.2.1
+          make distclean || true
+          env CFLAGS="-arch arm64" ./configure --disable-shared --host=aarch64-apple-darwin
+          make -j4
+          cp .libs/libgmp.a /tmp
+          make distclean
+          env CFLAGS="-arch x86_64 -fPIC -DPIC" ./configure --disable-shared --host=x86_64-apple-darwin
+          make -j4
+          lipo -create -output libgmp.a .libs/libgmp.a /tmp/libgmp.a
+          cd ..
+          mkdir -p libft4222/build
+          cp gmp-6.2.1/gmp.h libft4222
+          cp gmp-6.2.1/libgmp.a libft4222/build
+        fi
+
+    - name: Build minroot executable
+      run: ./build.sh
+
+    - name: Upload minroot executable
+      uses: actions/upload-artifact@v3
+      with:
+        name: universal-minroot
+        path: ./minroot

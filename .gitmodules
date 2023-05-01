@@ -1,0 +1,3 @@
+[submodule "sloth-pasta"]
+	path = sloth-pasta
+	url = https://github.com/supranational/sloth-pasta
