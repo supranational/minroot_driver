@@ -2,7 +2,7 @@
 
 The minroot ASIC is a joint project sponsored by the Ethereum Foundation, Protocol Labs, and the Filecoin Foundation. The goal is to explore verifiable delay functions (VDF) as a secure and provable source of randomness. This repository provides a basic driver and example program for interfacing with the prototype minroot ASIC devices.
 
-# Setup
+## Setup
 
 The build process should work on Linux and Mac
 
@@ -14,10 +14,17 @@ We also supply a prebuilt binary for Mac through github actions - TODO
 
 For Linux, if gmp is not already installed:
 ```
-TODO - fill in here
+wget https://gmplib.org/download/gmp/gmp-6.2.1.tar.lz
+tar --lzip -xf gmp-6.2.1.tar.lz
+cd gmp-6.2.1/
+./configure --enable-cxx
+make -j2
+make check
+sudo make install
+cd ..
 ```
 
-# Run
+## Run
 
 ```
 ./minroot
@@ -33,10 +40,13 @@ Available command line options
   -i <iterations>
 ```
 
-# Performance
+## Performance
 
 The minroot ASIC can perform approximately 4000 iterations/second/MHz. Therefore at 1 GHz the expected performance is on the order of 4M iterations/second. A high frequency CPU can do approximately 400K iterations/second, which makes the ASIC ~10x faster.
 
-# TODO
+## TODO
 - Add engine mask
 - Add timing data
+
+## License
+The blst library is licensed under the [Apache License Version 2.0](LICENSE) software license.
