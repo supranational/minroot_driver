@@ -42,11 +42,10 @@ Available command line options
 
 ## Performance
 
-The minroot ASIC can perform approximately 4000 iterations/second/MHz. Therefore at 1 GHz the expected performance is on the order of 4M iterations/second. A high frequency CPU can do approximately 400K iterations/second, which makes the ASIC ~10x faster.
+The minroot ASIC can perform approximately 3800 iterations/second/MHz. Therefore at 1 GHz the expected performance is on the order of 3.8M iterations/second.
 
 ## TODO
-- Add engine mask
-- Add timing data
+- Add engine mask to specify job to be run on a particular engine
 
 ## License
 The blst library is licensed under the [Apache License Version 2.0](LICENSE) software license.

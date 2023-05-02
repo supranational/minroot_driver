@@ -191,6 +191,8 @@ int main(int argc, char* argv[]) {
   size_t   size[num_engines];
   uint8_t* job[num_engines];
   unsigned job_csr[num_engines];
+
+  std::chrono::time_point<std::chrono::system_clock> starts[num_engines];
     
   for (unsigned i=0; i<num_engines; i++) {
     model[i] = 
@@ -229,6 +231,7 @@ int main(int argc, char* argv[]) {
         job[i] = PrepareJob(driver, *model[i], size[i], iters);
         printf("Starting job %d id=0x%x on engine %d\n",
                started_jobs,*(unsigned *)job[i],i);
+        starts[i] = std::chrono::system_clock::now();
         driver.ftdi.Write(job_csr[i], job[i], size[i]);
         worker[i] = new Worker(driver, *model[i]);
         started_jobs++;
@@ -247,13 +250,13 @@ int main(int argc, char* argv[]) {
       driver.ftdi.Read(BURST_ADDR, buf, pvt+num_engines*size);
 
       // dump power
-      {
-        double temperature, voltage, power;
-        driver.InterpretPvtBurst(buf, &temperature, &voltage);
-        power = driver.GetPower();
-        printf("voltage=%lf, temperature=%lf, power=%lf\n",
-               voltage, temperature, power);
-      }
+      //{
+      //  double temperature, voltage, power;
+      //  driver.InterpretPvtBurst(buf, &temperature, &voltage);
+      //  power = driver.GetPower();
+      //  printf("voltage=%lf, temperature=%lf, power=%lf\n",
+      //         voltage, temperature, power);
+      //}
 
       // send intermediates to worker threads
       for(unsigned i=0; i<num_engines; i++) {
@@ -269,7 +272,14 @@ int main(int argc, char* argv[]) {
           while (success && worker[i]->GetResults(&success,&done)) {
             printf("Intermediate on engine %d is %s\n",i,success?"OK":"NG");
             if (done) {
-              printf("Completed job on engine %d\n",i);
+              auto cur = std::chrono::system_clock::now();
+              int64_t dur =
+                std::chrono::duration_cast
+                <std::chrono::milliseconds>(cur - starts[i]).count();
+              uint64_t iters_sec =
+                (uint64_t)((double)iters / ((double) dur / 1000.0));
+              printf("Completed job on engine %d in %" PRId64
+                     " ms, ~%" PRId64 " iters/sec\n", i, dur, iters_sec);
               free(job[i]);
               job[i]=NULL;
               delete worker[i];
