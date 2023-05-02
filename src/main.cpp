@@ -39,11 +39,11 @@ bool CheckResults(Driver& driver, Model& model, uint8_t* job) {
 }
 
 // Note: caller must free the buffer
-uint8_t* PrepareJob(Driver& driver, Model& model, size_t& size) {
+uint8_t* PrepareJob(Driver& driver, Model& model, size_t& size,
+                    uint64_t iteration_count = 0) {
   mpz_t x, y;
   mpz_inits(x, y, NULL);
 
-  uint64_t iteration_count;
   uint64_t starting_iteration;
   uint32_t job_id;
 
@@ -59,19 +59,12 @@ uint8_t* PrepareJob(Driver& driver, Model& model, size_t& size) {
   return buf;
 }
 
-// -----------------------------------------------------------------------------------------
-// Infracture for multi-thread checking of intermediates
-
-#define MULTI_THREAD
-
 typedef struct {
   uint8_t d[VDF_STATUS_END_REG_OFFSET - VDF_STATUS_JOB_ID_REG_OFFSET];
 } intermediate_t;
   
 class Worker {
-
 private:
-  
   std::queue<intermediate_t> m_queue_intermediate;
   std::queue<int> m_queue_result;
   Driver *driver;
@@ -82,37 +75,25 @@ private:
   std::mutex m_mutex_result;
   
 public:
-
   Worker(Driver& _driver, Model& _model) {
     driver = &_driver;
     model = &_model;
-#ifdef MULTI_THREAD
     m_thread = std::thread(&Worker::doWork, this);
-#endif
   }
 
   ~Worker() {
-#ifdef MULTI_THREAD
     m_thread.join();
-#endif
   }
 
   void QueueIntermediate(uint8_t *d) {
-#ifdef MULTI_THREAD
     std::unique_lock<std::mutex> lock(m_mutex_intermediate);
-#endif
     m_queue_intermediate.push(*(intermediate_t *)d);
-#ifdef MULTI_THREAD
     m_cond_intermediate.notify_one();
-#endif
   }
 
-  int GetResults(bool *success, bool *done)
-  {
+  int GetResults(bool *success, bool *done) {
     int result;
-#ifdef MULTI_THREAD
     std::unique_lock<std::mutex> lock(m_mutex_result);
-#endif
     if (m_queue_result.empty())
       return 0;
     result = m_queue_result.front();
@@ -127,13 +108,9 @@ public:
     intermediate_t d;
     while(!done) {
       {
-#ifdef MULTI_THREAD
         std::unique_lock<std::mutex> lock(m_mutex_intermediate);
-        m_cond_intermediate.wait(lock,[this]() { return !m_queue_intermediate.empty(); });
-#else
-        if (m_queue_intermediate.empty())
-          return;
-#endif
+        m_cond_intermediate.wait(lock,
+          [this]() { return !m_queue_intermediate.empty(); });
         d = m_queue_intermediate.front();
         m_queue_intermediate.pop();
       }
@@ -141,9 +118,7 @@ public:
       done = model->RunComplete();
       int result = (success ? 1 : 0) | (done ? 2 : 0);
       {
-#ifdef MULTI_THREAD
         std::unique_lock<std::mutex> lock(m_mutex_result);
-#endif
         m_queue_result.push(result);
       }
     }
@@ -151,26 +126,39 @@ public:
 
 };
 
-//
-// -----------------------------------------------------------------------------------------
-
-// freq
-// voltage
-// engine mask
-// proof threads
-// jobs
-// iters
-// seed
-
 int main(int argc, char* argv[]) {
   int  opt = 0;
   unsigned int rand_seed = 1;
   unsigned int num_jobs  = 1;
   unsigned int num_engines = 1;
+  double freq = 200.0;
+  double voltage = 0.80;
+  uint64_t iters = 0; // 0 implies randomize
 
-  // usage: -s 1
-  while ((opt = getopt(argc, argv, "s:n:e:")) != -1) {
+  while ((opt = getopt(argc, argv, "f:v:i:s:n:e:h")) != -1) {
     switch(opt) {
+      case 'h':
+        printf("Help\n");
+        printf(" -s <seed>\n");
+        printf(" -n <num jobs>\n");
+        printf(" -e <num engines>\n");
+        printf(" -f <frequency> (should be between 200 and 1100)\n");
+        printf(" -v <voltage> (should be between 0.70 and 1.0)\n");
+        printf(" -i <iterations>\n");
+        return 0;
+        break;
+      case 'f':
+        freq = (double)atof(optarg);
+        printf("Command line freq %lf\n", freq);
+        break;
+      case 'v':
+        voltage = (double)atof(optarg);
+        printf("Command line voltage %lf\n", voltage);
+        break;
+      case 'i':
+        iters = (uint64_t)atol(optarg);
+        printf("Command line iters %ld\n", iters);
+        break;
       case 's':
         rand_seed  = (unsigned int)atoi(optarg);
         printf("Command line Seed %d\n", rand_seed);
@@ -192,15 +180,11 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  double freq = 200.0;
-  double voltage = 0.8;
-
   srand (rand_seed);
 
   Driver driver(freq, voltage);
 
   bool     success = true;
-
 
   Model** model = new Model*[num_engines];
   Worker* worker[num_engines];
@@ -239,11 +223,10 @@ int main(int argc, char* argv[]) {
   unsigned completed_jobs = 0;
 
   do {
-
     // start jobs on idle engines as long as jobs remain
     for(unsigned i=0; i<num_engines; i++) {
       if (!job[i] && started_jobs<num_jobs) {
-        job[i] = PrepareJob(driver, *model[i], size[i]);
+        job[i] = PrepareJob(driver, *model[i], size[i], iters);
         printf("Starting job %d id=0x%x on engine %d\n",
                started_jobs,*(unsigned *)job[i],i);
         driver.ftdi.Write(job_csr[i], job[i], size[i]);
@@ -279,16 +262,6 @@ int main(int argc, char* argv[]) {
         }
       }
 
-      // if not multi-threaded, run the intermediate checking here
-#ifdef MULTI_THREAD
-#else
-      for(unsigned i=0; i<num_engines; i++) {
-        if (job[i]!=NULL) {
-          worker[i]->doWork();
-        }
-      }
-#endif
-      
       // review results from intermediate checking
       for(unsigned i=0; i<num_engines && success; i++) {
         if (job[i]!=NULL) {

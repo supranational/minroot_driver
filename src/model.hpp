@@ -46,13 +46,14 @@ public:
 
     job_id = (uint32_t) rand();
 
-    // Iteration size is 48 bits
-    unsigned int rand_lower = rand();
-    unsigned int rand_upper = rand() % 0xFFFF;
+    // If no iteration count is provided then randomize
+    if (iteration_count == 0) {
+      // Iteration size is 48 bits
+      unsigned int rand_lower = rand();
+      unsigned int rand_upper = rand() % 0xFFFF;
 
-    iteration_count = (((uint64_t) rand_upper) << 32) | rand_lower;
-    // FIXME
-    iteration_count = 1000000;
+      iteration_count = (((uint64_t) rand_upper) << 32) | rand_lower;
+    }
 
     // Limit the time to something not too large for now
     uint64_t max_iters = 100000000;
@@ -75,6 +76,7 @@ public:
     mpz_mod(prev_y_raw_, prev_y_raw_, modulus_);
 
     printf("\nStarting iteration %" PRIu64 "\n", starting_iteration);
+    printf("\nIterations to run %" PRIu64 "\n", iteration_count);
     gmp_printf("Mont input x       %#Zx\n", x);
     gmp_printf("Mont input y       %#Zx\n", y);
     gmp_printf("Raw input x        %#Zx\n", prev_x_raw_);

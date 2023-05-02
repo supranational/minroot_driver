@@ -55,8 +55,8 @@ fi
 
 ${CC:-cc} ${CFLAGS} -g -O -c sloth-pasta/src/pasta_vdf.c sloth-pasta/src/assembly.S
 trap 'rm -f pasta_vdf.o assembly.o' 0
-rm -f sloth
-${CXX:-c++} ${CXXFLAGS} -std=c++11 -pthread -g -O -o sloth -Wall -Wextra \
+rm -f minroot
+${CXX:-c++} ${CXXFLAGS} -std=c++11 -pthread -g -O -o minroot -Wall -Wextra \
     -Ilibft4222 -Isrc \
     src/main.cpp src/driver.cpp src/ftdi_driver.cpp \
     pasta_vdf.o assembly.o \
