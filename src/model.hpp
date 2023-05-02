@@ -76,7 +76,7 @@ public:
     mpz_mod(prev_y_raw_, prev_y_raw_, modulus_);
 
     printf("\nStarting iteration %" PRIu64 "\n", starting_iteration);
-    printf("\nIterations to run %" PRIu64 "\n", iteration_count);
+    printf("Iterations to run %" PRIu64 "\n", iteration_count);
     gmp_printf("Mont input x       %#Zx\n", x);
     gmp_printf("Mont input y       %#Zx\n", y);
     gmp_printf("Raw input x        %#Zx\n", prev_x_raw_);

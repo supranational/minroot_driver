@@ -157,7 +157,7 @@ int main(int argc, char* argv[]) {
         break;
       case 'i':
         iters = (uint64_t)atol(optarg);
-        printf("Command line iters %ld\n", iters);
+        printf("Command line iters %" PRIu64 "\n", iters);
         break;
       case 's':
         rand_seed  = (unsigned int)atoi(optarg);
@@ -246,7 +246,7 @@ int main(int argc, char* argv[]) {
       memset(buf, 0, num_engines*size);
       driver.ftdi.Read(BURST_ADDR, buf, pvt+num_engines*size);
 
-      // dump PVT, power
+      // dump power
       {
         double temperature, voltage, power;
         driver.InterpretPvtBurst(buf, &temperature, &voltage);

@@ -10,7 +10,7 @@ The build process should work on Linux and Mac
 ./build.sh
 ```
 
-We also supply a prebuilt binary for Mac through github actions - TODO
+We also supply a prebuilt universal binary for Mac under github actions. Click on Actions, select the latest workflow run and download the 'universal-minroot' artifact.
 
 For Linux, if gmp is not already installed:
 ```
@@ -33,8 +33,8 @@ cd ..
 Available command line options
 ```
   -s <seed>
-  -n <num jobs>
-  -e <num engines> (1 - 12)
+  -n <num_jobs>
+  -e <num_engines> (1 - 12)
   -f <frequency> (should be between 200 and 1100)
   -v <voltage> (should be between 0.70 and 1.0)
   -i <iterations>

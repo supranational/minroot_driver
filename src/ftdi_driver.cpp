@@ -10,9 +10,6 @@
 #include <assert.h>
 #include <time.h>
 
-#include <chrono>
-typedef std::chrono::high_resolution_clock Clock;
-
 #include "ftdi_driver.hpp"
 
 #define SPI_TRANSFER_RW_DATA         0
