@@ -10,7 +10,7 @@ on:
 
 jobs:
   macos-universal-build:
-    runs-on: macos-latest
+    runs-on: macos-11
 
     steps:
     - uses: actions/checkout@v3
@@ -18,7 +18,7 @@ jobs:
     - uses: actions/cache@v3
       with:
         path: '**/libft4222'
-        key: ${{ runner.os }}-libft4222
+        key: ${{ runner.os }}-11-libft4222
 
     - name: Build GMP
       shell: bash
