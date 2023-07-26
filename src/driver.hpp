@@ -122,7 +122,16 @@ public:
   int SetBoardVoltage(double voltage);
   double GetBoardCurrent();
   double GetPower();
+  int AutoConfigVr();
 
   FtdiDriver ftdi;
+
+  typedef enum {
+    VR_none,
+    VR_MAX20499,
+    VR_IR38263
+  } VR_t;
+
+  VR_t vr;
 };
 #endif

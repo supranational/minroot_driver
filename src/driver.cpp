@@ -14,6 +14,7 @@
 
 #define VR_I2C_ADDR 0x38
 #define CS_I2C_ADDR 0x70
+#define IR_I2C_ADDR 0x48
 
 Driver::Driver(double freq, double board_voltage) {
   InitializeDevice(freq, board_voltage);
@@ -160,6 +161,12 @@ void Driver::InitializeDevice(double freq, double board_voltage) {
   }
 
   int ret_val;
+
+  ret_val = AutoConfigVr();
+  if (ret_val != 0) {
+    fprintf(stderr, "Aborting since AutoConfigVr() failed\n");
+    abort();
+  }
 
   ret_val = Reset(100);
   if (ret_val != 0) {
@@ -507,6 +514,7 @@ bool Driver::SetPLLFrequency(double frequency) {
   RegWrite(PLL_FB_DIVIDE_INTEGER_REG_OFFSET, divfi);
   RegWrite(PLL_POST_DIVIDE_REG_OFFSET, divq);
   RegWrite(PLL_FILTER_RANGE_REG_OFFSET, filter_range);
+  //RegWrite(PLL_SPREAD_SPECTRUM_REG_OFFSET, 0x513);
 
   RegWrite(PLL_CONTROL_REG_OFFSET, (uint32_t)0x4); // New div
 
@@ -605,6 +613,8 @@ int Driver::TurnFanOn() {
   ret_val = ftdi.SetGPIO(GPIO_PORT3, 1);
   if (ret_val != 0) {
     fprintf(stderr, "TurnFanOn failed to set gpio, %d\n", ret_val);
+  } else {
+    usleep(2000000); // Allow the fan to spin up
   }
   return ret_val;
 }
@@ -675,76 +685,300 @@ int Driver::I2CReadReg(uint8_t i2c_addr, uint8_t reg_addr,
 }
 
 double Driver::GetBoardVoltage() {
-  uint8_t vid;
-  int ret_val = I2CReadReg(VR_I2C_ADDR, 0x7, 1, &vid);
-  if (ret_val != 0) {
-    fprintf(stderr, "GetBoardVoltage failed to read reg, %d\n", ret_val);
+  switch (vr) {
+  case VR_MAX20499:
+    {
+      uint8_t vid;
+      int ret_val = I2CReadReg(VR_I2C_ADDR, 0x7, 1, &vid);
+      if (ret_val != 0) {
+	fprintf(stderr, "GetBoardVoltage failed to read reg, %d\n", ret_val);
+	return 0.0;
+      }
+
+      double vr_factor = 100000.0;
+      double vr_slope = 625.0;
+      double vr_intercept = 24375.0;
+      double voltage = (vr_intercept + (vid * vr_slope)) / vr_factor;
+      return voltage;
+    }
+
+  case VR_IR38263:
+    {
+      uint8_t buf[2];
+      size_t len;
+      uint16_t bytesXfered;
+      int ret_val;
+
+      buf[0] = 0x8b; // READ_VOUT
+      len = 1;
+      ret_val = ftdi.i2c_TransmitX(1, 0, IR_I2C_ADDR, buf, len, bytesXfered);
+      if (ret_val != 0) {
+	fprintf(stderr, "GetBoardVoltage send IR_READ_VOUT command read, %d\n",
+		ret_val);
+	return 0.0;
+      }
+
+      if (len != size_t(bytesXfered)) {
+	fprintf(stderr, "GetBoardVoltage send IR_READ_VOUT command %d bytes transfered\n",
+		bytesXfered);
+	return 0.0;
+      }
+
+      len = 2;
+      ret_val = ftdi.i2c_ReceiveX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
+      if (ret_val != 0) {
+	fprintf(stderr, "GetBoardVoltage failed IR_READ_VOUT command read, %d\n",
+		ret_val);
+	return 0.0;
+      }
+
+      if (len != size_t(bytesXfered)) {
+	fprintf(stderr, "GetBoardVoltage IR_READ_VOUT command read returned %d bytes\n",
+		bytesXfered);
+	return 0.0;
+      }
+
+      int code = buf[1] << 8;
+      code += buf[0];
+      return double(code) / 256.0;
+    }
+
+  default:
+    fprintf(stderr, "GetBoardVoltage failed due to unspecified voltage regulator\n");
     return 0.0;
   }
-
-  double vr_factor = 100000.0;
-  double vr_slope = 625.0;
-  double vr_intercept = 24375.0;
-  double voltage = (vr_intercept + (vid * vr_slope)) / vr_factor;
-  return voltage;
 }
 
 int Driver::SetBoardVoltage(double voltage) {
-  uint8_t vid;
-  double vr_factor = 100000.0;
-  uint32_t vr_slope = 625;
-  uint32_t vr_intercept = 24375;
-  vid =
-    (uint8_t)((((uint32_t)(voltage * vr_factor)) - vr_intercept) / vr_slope);
+  switch (vr) {
+  case VR_MAX20499:
+    {
+      uint8_t vid;
+      double vr_factor = 100000.0;
+      uint32_t vr_slope = 625;
+      uint32_t vr_intercept = 24375;
+      vid =
+	(uint8_t)((((uint32_t)(voltage * vr_factor)) - vr_intercept) / vr_slope);
 
-  if ((vid < 0x29) || (vid > 0x79)) {
-    fprintf(stderr, "SetBoardVoltage illegal vid %d for voltage %1.3f\n",
-            vid, voltage);
+      if ((vid < 0x29) || (vid > 0x79)) {
+	fprintf(stderr, "SetBoardVoltage illegal vid %d for voltage %1.3f\n",
+		vid, voltage);
+	return 1;
+      }
+
+      int ret_val = I2CWriteReg(VR_I2C_ADDR, 0x8, 0xe4);
+      if (ret_val != 0) {
+	fprintf(stderr, "SetBoardVoltage failed to write COMP reg, %d\n", ret_val);
+      }
+
+      ret_val |= I2CWriteReg(VR_I2C_ADDR, 0x7, vid);
+      if (ret_val != 0) {
+	fprintf(stderr, "SetBoardVoltage failed to write VID reg, %d\n", ret_val);
+      }
+
+      return ret_val;
+    }
+
+  case VR_IR38263:
+    {
+      uint16_t vid;
+      vid = uint16_t(voltage * 256.0);
+
+      uint8_t buf[3];
+      size_t len;
+      uint16_t bytesXfered;
+      int ret_val;
+
+      buf[0] = 0x21; // VOUT_COMMAND
+      buf[1] = vid & 0xff;
+      buf[2] = (vid >> 8) & 0xff;
+      len = 3;
+      ret_val = ftdi.i2c_TransmitX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
+      if (ret_val != 0) {
+	fprintf(stderr, "SetBoardVoltage send IR_READ_COMMAND failed, %d\n",
+		ret_val);
+	return 1;
+      }
+
+      if (len != size_t(bytesXfered)) {
+	fprintf(stderr, "SetBoardVoltage send IR_READ_COMMAND %d bytes transfered\n",
+		bytesXfered);
+	return 1;
+      }
+      usleep(500000);
+
+      return ret_val;
+    }
+
+  default:
+    fprintf(stderr, "SetBoardVoltage failed due to unspecified voltage regulator\n");
     return 1;
   }
-
-  int ret_val = I2CWriteReg(VR_I2C_ADDR, 0x8, 0xe4);
-  if (ret_val != 0) {
-    fprintf(stderr, "SetBoardVoltage failed to write COMP reg, %d\n", ret_val);
-  }
-
-  ret_val |= I2CWriteReg(VR_I2C_ADDR, 0x7, vid);
-  if (ret_val != 0) {
-    fprintf(stderr, "SetBoardVoltage failed to write VID reg, %d\n", ret_val);
-  }
-
-  return ret_val;
 }
 
 double Driver::GetBoardCurrent() {
-  uint16_t cs;
+  switch (vr) {
+  case VR_MAX20499:
+    {
+      uint16_t cs;
 
-  int ret_val = I2CWriteReg(CS_I2C_ADDR, 0xA, 0x2);
-  if (ret_val != 0) {
-    fprintf(stderr, "GetBoardCurrent failed to write reg, %d\n", ret_val);
+      int ret_val = I2CWriteReg(CS_I2C_ADDR, 0xA, 0x2);
+      if (ret_val != 0) {
+	fprintf(stderr, "GetBoardCurrent failed to write reg, %d\n", ret_val);
+	return 0.0;
+      }
+
+      usleep(10000);
+
+      ret_val = I2CReadReg(CS_I2C_ADDR, 0x0, 2, (uint8_t*)(&cs));
+      if (ret_val != 0) {
+	fprintf(stderr, "GetBoardCurrent failed to read reg, %d\n", ret_val);
+	return 0.0;
+      }
+
+      double cs_vmax = 440.0; // mv
+      double cs_gain = 8.0;
+      double cs_adc_max = 4096.0;
+      double cs_resistor = 3.0; // mohm
+
+      double c = ((double)cs * cs_vmax) / (cs_gain * cs_adc_max * cs_resistor);
+
+      return c;
+    }
+
+  case VR_IR38263:
+    {
+      uint8_t buf[2];
+      size_t len;
+      uint16_t bytesXfered;
+      int ret_val;
+
+      buf[0] = 0x8c; // READ_IOUT
+      len = 1;
+      ret_val = ftdi.i2c_TransmitX(1, 0, IR_I2C_ADDR, buf, len, bytesXfered);
+      if (ret_val != 0) {
+	fprintf(stderr, "GetBoardCurrent send IR_READ_IOUT command read, %d\n",
+		ret_val);
+	return 0.0;
+      }
+
+      if (len != size_t(bytesXfered)) {
+	fprintf(stderr, "GetBoardCurrent send IR_READ_IOUT command %d bytes transfered\n",
+		bytesXfered);
+	return 0.0;
+      }
+
+      len = 2;
+      ret_val = ftdi.i2c_ReceiveX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
+      if (ret_val != 0) {
+	fprintf(stderr, "GetBoardCurrent failed IR_READ_IOUT command read, %d\n",
+		ret_val);
+	return 0.0;
+      }
+
+      if (len != size_t(bytesXfered)) {
+	fprintf(stderr, "GetBoardCurrent IR_READ_IOUT command read returned %d bytes\n",
+		bytesXfered);
+	return 0.0;
+      }
+
+      int code = buf[1] << 8;
+      code += buf[0];
+      code &= 0x7ff; // 11 bits
+      return double(code) / 16.0;;
+    }
+
+  default:
+    fprintf(stderr, "GetBoardCurrent failed due to unspecified voltage regulator\n");
     return 0.0;
   }
-
-  usleep(10000);
-
-  ret_val = I2CReadReg(CS_I2C_ADDR, 0x0, 2, (uint8_t*)(&cs));
-  if (ret_val != 0) {
-    fprintf(stderr, "GetBoardCurrent failed to read reg, %d\n", ret_val);
-    return 0.0;
-  }
-
-  double cs_vmax = 440.0; // mv
-  double cs_gain = 8.0;
-  double cs_adc_max = 4096.0;
-  double cs_resistor = 3.0; // mohm
-
-  double c = ((double)cs * cs_vmax) / (cs_gain * cs_adc_max * cs_resistor);
-
-  return c;
 }
 
 double Driver::GetPower() {
   double current = GetBoardCurrent();
   double voltage = GetBoardVoltage();
   return (current * voltage);
+}
+
+int Driver::AutoConfigVr() {
+
+  vr = VR_none;
+
+  int ret_val;
+
+  // Query I2C to see if IR38263 is attached.
+  uint8_t buf[4];
+  size_t len;
+  uint16_t bytesXfered;
+
+  buf[0] = 0x9a; // MFR_MODEL command
+  len = 1;
+
+  ret_val = ftdi.i2c_TransmitX(1, 0, IR_I2C_ADDR, buf, len, bytesXfered);
+  if (ret_val != 0) {
+    fprintf(stderr, "AutoConfigVr failed send IR_MFR_MODEL command, %d\n",
+	    ret_val);
+    return 1;
+  }
+
+  if (len != size_t(bytesXfered)) {
+    fprintf(stderr, "AutoConfigVr send IR_MFR_MODEL command %d bytes transfered\n",
+	    bytesXfered);
+    return 1;
+  }
+
+  len = 4;
+  ret_val = ftdi.i2c_ReceiveX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
+  if (ret_val != 0) {
+    fprintf(stderr, "AutoConfigVr failed IR_MFR_MODEL command read, %d\n",
+	    ret_val);
+    return 1;
+  }
+
+  if (len != size_t(bytesXfered)) {
+    fprintf(stderr, "AutoConfigVr IR_MFR_MODEL command read returned %d bytes\n",
+	    bytesXfered);
+    return 1;
+  }
+
+  if (buf[0] == 0x03 && buf[1] == 0x65 && buf[2] == 0x00 && buf[3] == 0x00) {
+    vr = VR_IR38263;
+
+    // Set configuration to PMBus mode.
+    buf[0] = 0xd1; // MFR_WRITE_REG command
+    buf[1] = 0x75; // SVID_PVID_Mode register
+    buf[2] = 0x80; // bit 6 1=PVID mode, 0=PMBus mode
+    len = 3;
+    ret_val = ftdi.i2c_TransmitX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
+    if (ret_val != 0) {
+      fprintf(stderr, "AutoConfigVr failed PMBUs config, %d\n",
+	      ret_val);
+      return 1;
+    }
+
+    if (len != size_t(bytesXfered)) {
+      fprintf(stderr, "AutoConfigVr failed PMBus config with %d bytes transfered\n",
+	      bytesXfered);
+      return 1;
+    }
+
+    return 0;
+  }
+
+  // Query I2C to see if MAX20499 is attached.
+  len = 1;
+  ret_val = I2CReadReg(VR_I2C_ADDR, 0x00, len, buf);
+  if (ret_val != 0) {
+    fprintf(stderr, "AutoConfigVr failed read VR_ID register, %d\n",
+	    ret_val);
+    return 1;
+  }
+
+  if ((buf[0] >> 4) == 0x07) { // compare to "DEV" field
+    vr = VR_MAX20499;
+    return 0;
+  }
+
+  fprintf(stderr, "AutoConfigVr failed, no voltage regulator found\n");
+  return 1;
 }

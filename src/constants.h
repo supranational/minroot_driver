@@ -28,6 +28,7 @@
 #define PLL_FB_DIVIDE_INTEGER_REG_OFFSET   0x08
 #define PLL_POST_DIVIDE_REG_OFFSET         0x10
 #define PLL_FILTER_RANGE_REG_OFFSET        0x14
+#define PLL_SPREAD_SPECTRUM_REG_OFFSET     0x18
 #define PLL_STATUS_REG_OFFSET              0x1c
 
 #define PLL_STATUS_LOCK_BIT                0
