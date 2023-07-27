@@ -47,7 +47,8 @@ public:
     job_id = (uint32_t) rand();
 
     // Limit the time to something not too large for now
-    uint64_t max_iters = 100000000;
+    // @ 700 MHz, 500M iterations ~ 3 minutes, so 10B ~ 1 hour
+    uint64_t max_iters = 1000000000000;
 
     // If no iteration count is provided then randomize
     if (iteration_count == 0) {
