@@ -476,7 +476,7 @@ void Driver::ResetPLL() {
   RegWrite(PLL_CONTROL_REG_OFFSET, (uint32_t)0x1); // Reset
 }
 
-bool Driver::SetPLLFrequency(double frequency) {
+bool Driver::SetPLLFrequency(double frequency, bool ss) {
   if (frequency > pll_entries[VALID_PLL_FREQS - 1].freq) {
     fprintf(stderr, "SetPLLFrequency frequency too high %lf\n", frequency);
     return false;
@@ -514,7 +514,21 @@ bool Driver::SetPLLFrequency(double frequency) {
   RegWrite(PLL_FB_DIVIDE_INTEGER_REG_OFFSET, divfi);
   RegWrite(PLL_POST_DIVIDE_REG_OFFSET, divq);
   RegWrite(PLL_FILTER_RANGE_REG_OFFSET, filter_range);
-  //RegWrite(PLL_SPREAD_SPECTRUM_REG_OFFSET, 0x513);
+
+  if (ss) {
+    uint32_t spread_spectrum =
+      (
+       // Enable
+       (0x1 << PLL_SPREAD_SPECTRUM_ENABLE_BIT) |
+       // Down spread
+       (0x1 << PLL_SPREAD_SPECTRUM_DOWN_SPREAD_BIT) |
+       // 4% depth
+       (0x7 << PLL_SPREAD_SPECTRUM_MODULATION_DEPTH_OFFSET) |
+       // 14.7 kHz modulation
+       (0x5 << PLL_SPREAD_SPECTRUM_MODULATION_FREQUENCY_OFFSET)
+       );
+    RegWrite(PLL_SPREAD_SPECTRUM_REG_OFFSET, spread_spectrum);
+  }
 
   RegWrite(PLL_CONTROL_REG_OFFSET, (uint32_t)0x4); // New div
 

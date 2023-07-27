@@ -111,7 +111,7 @@ public:
   bool SetTempAlarmExternal(double temp);
   bool SetTempAlarmEngine(double temp);
   void ResetPLL();
-  bool SetPLLFrequency(double frequency);
+  bool SetPLLFrequency(double frequency, bool ss=true);
   double GetPLLFrequency();
   int Reset(uint32_t sleep_duration);
   int TurnFanOn();

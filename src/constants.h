@@ -31,12 +31,16 @@
 #define PLL_SPREAD_SPECTRUM_REG_OFFSET     0x18
 #define PLL_STATUS_REG_OFFSET              0x1c
 
-#define PLL_STATUS_LOCK_BIT                0
-#define PLL_STATUS_DIVACK_BIT              1
-#define PLL_CONTROL_RESET_BIT              0
-#define PLL_CONTROL_BYPASS_BIT             1
-#define PLL_CONTROL_NEWDIV_BIT             2
-#define PLL_CONTROL_USEREF_BIT             3
+#define PLL_STATUS_LOCK_BIT                             0
+#define PLL_STATUS_DIVACK_BIT                           1
+#define PLL_CONTROL_RESET_BIT                           0
+#define PLL_CONTROL_BYPASS_BIT                          1
+#define PLL_CONTROL_NEWDIV_BIT                          2
+#define PLL_CONTROL_USEREF_BIT                          3
+#define PLL_SPREAD_SPECTRUM_ENABLE_BIT                  0
+#define PLL_SPREAD_SPECTRUM_DOWN_SPREAD_BIT             1
+#define PLL_SPREAD_SPECTRUM_MODULATION_DEPTH_OFFSET     4
+#define PLL_SPREAD_SPECTRUM_MODULATION_FREQUENCY_OFFSET 8
 
 #define WORD_BITS                          16
 #define REDUNDANT_BITS                     17
