@@ -919,6 +919,7 @@ double Driver::GetPower() {
 int Driver::AutoConfigVr() {
 
   // IR38263
+  const uint8_t IR_CLEAR_FAULTS           = 0x03;
   const uint8_t IR_VOUT_OV_FAULT_LIMIT    = 0x40;
   const uint8_t IR_VOUT_OV_FAULT_RESPONSE = 0x41;
   const uint8_t IR_IOUT_OC_FAULT_LIMIT    = 0x46;
@@ -996,6 +997,9 @@ int Driver::AutoConfigVr() {
     PMBusWrite(IR_VOUT_OV_FAULT_RESPONSE, 1, &vout_ov_response);
     PMBusWrite(IR_IOUT_OC_FAULT_RESPONSE, 1, &iout_oc_response);
     PMBusWrite(IR_OT_FAULT_RESPONSE,      1, &ot_response);
+
+    // Clear faults.
+    PMBusWrite(IR_CLEAR_FAULTS, 0, buf);
 
     return 0;
   }
