@@ -698,6 +698,66 @@ int Driver::I2CReadReg(uint8_t i2c_addr, uint8_t reg_addr,
   return FtdiDriver::I2C_RETURN_CODE_success;
 }
 
+int Driver::PMBusWrite(uint8_t cmd, size_t len, uint8_t* data) {
+  int ret_val;
+  uint8_t wbuf[len+1];
+  uint16_t bytesXfered;
+
+  wbuf[0] = cmd;
+  for (size_t i = 1; i <= len; i++) {
+    wbuf[i] = data[i-1];
+  }
+
+  len += 1;
+  ret_val = ftdi.i2c_TransmitX(1, 1, IR_I2C_ADDR, wbuf, len, bytesXfered);
+  if (ret_val != 0) {
+    fprintf(stderr, "PMBus write command failed, %d\n",
+	    ret_val);
+    return 1;
+  }
+
+  if (len != size_t(bytesXfered)) {
+    fprintf(stderr, "PMBus write command, %d bytes transfered\n",
+	    bytesXfered);
+    return 1;
+  }
+
+  return 0;
+}
+
+int Driver::PMBusRead(uint8_t cmd, size_t len, uint8_t* data) {
+  int ret_val;
+  uint16_t bytesXfered;
+
+  ret_val = ftdi.i2c_TransmitX(1, 0, IR_I2C_ADDR, &cmd, 1, bytesXfered);
+  if (ret_val != 0) {
+    fprintf(stderr, "PMBus read command write phase failed, %d\n",
+	    ret_val);
+    return 1;
+  }
+
+  if (1 != size_t(bytesXfered)) {
+    fprintf(stderr, "PMBus read command write phase %d bytes transfered\n",
+	    bytesXfered);
+    return 1;
+  }
+
+  ret_val = ftdi.i2c_ReceiveX(1, 1, IR_I2C_ADDR, data, len, bytesXfered);
+  if (ret_val != 0) {
+    fprintf(stderr, "PMBus read command read phase failed, %d\n",
+	    ret_val);
+    return 1;
+  }
+
+  if (len != size_t(bytesXfered)) {
+    fprintf(stderr, "PMBus read command read phase returned %d bytes\n",
+	    bytesXfered);
+    return 1;
+  }
+
+  return 0;
+}
+
 double Driver::GetBoardVoltage() {
   switch (vr) {
   case VR_MAX20499:
@@ -718,37 +778,14 @@ double Driver::GetBoardVoltage() {
 
   case VR_IR38263:
     {
-      uint8_t buf[2];
-      size_t len;
-      uint16_t bytesXfered;
-      int ret_val;
+      size_t len = 2;
+      uint8_t buf[len];
+      const uint8_t IR_VOUT_COMMAND = 0x21;
 
-      buf[0] = 0x8b; // READ_VOUT
-      len = 1;
-      ret_val = ftdi.i2c_TransmitX(1, 0, IR_I2C_ADDR, buf, len, bytesXfered);
+      int ret_val = PMBusRead(IR_VOUT_COMMAND, len, buf);
       if (ret_val != 0) {
-	fprintf(stderr, "GetBoardVoltage send IR_READ_VOUT command read, %d\n",
+	fprintf(stderr, "GetBoardVoltage failed IR_VOUT_COMMAND write, %d\n",
 		ret_val);
-	return 0.0;
-      }
-
-      if (len != size_t(bytesXfered)) {
-	fprintf(stderr, "GetBoardVoltage send IR_READ_VOUT command %d bytes transfered\n",
-		bytesXfered);
-	return 0.0;
-      }
-
-      len = 2;
-      ret_val = ftdi.i2c_ReceiveX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
-      if (ret_val != 0) {
-	fprintf(stderr, "GetBoardVoltage failed IR_READ_VOUT command read, %d\n",
-		ret_val);
-	return 0.0;
-      }
-
-      if (len != size_t(bytesXfered)) {
-	fprintf(stderr, "GetBoardVoltage IR_READ_VOUT command read returned %d bytes\n",
-		bytesXfered);
 	return 0.0;
       }
 
@@ -780,17 +817,13 @@ int Driver::SetBoardVoltage(double voltage) {
 	return 1;
       }
 
-      int ret_val = I2CWriteReg(VR_I2C_ADDR, 0x8, 0xe4);
-      if (ret_val != 0) {
-	fprintf(stderr, "SetBoardVoltage failed to write COMP reg, %d\n", ret_val);
-      }
-
-      ret_val |= I2CWriteReg(VR_I2C_ADDR, 0x7, vid);
+      int ret_val = I2CWriteReg(VR_I2C_ADDR, 0x7, vid);
       if (ret_val != 0) {
 	fprintf(stderr, "SetBoardVoltage failed to write VID reg, %d\n", ret_val);
+	return 1;
       }
 
-      return ret_val;
+      return 0;
     }
 
   case VR_IR38263:
@@ -798,25 +831,17 @@ int Driver::SetBoardVoltage(double voltage) {
       uint16_t vid;
       vid = uint16_t(voltage * 256.0);
 
-      uint8_t buf[3];
-      size_t len;
-      uint16_t bytesXfered;
-      int ret_val;
+      size_t len = 2;
+      uint8_t buf[len];
+      const uint8_t IR_VOUT_COMMAND = 0x21;
 
-      buf[0] = 0x21; // VOUT_COMMAND
-      buf[1] = vid & 0xff;
-      buf[2] = (vid >> 8) & 0xff;
-      len = 3;
-      ret_val = ftdi.i2c_TransmitX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
+      buf[0] = vid & 0xff;
+      buf[1] = (vid >> 8) & 0xff;
+
+      int ret_val = PMBusWrite(IR_VOUT_COMMAND, len, buf);
       if (ret_val != 0) {
-	fprintf(stderr, "SetBoardVoltage send IR_READ_COMMAND failed, %d\n",
+	fprintf(stderr, "SetBoardVoltage failed IR_VOUT_COMMAND write, %d\n",
 		ret_val);
-	return 1;
-      }
-
-      if (len != size_t(bytesXfered)) {
-	fprintf(stderr, "SetBoardVoltage send IR_READ_COMMAND %d bytes transfered\n",
-		bytesXfered);
 	return 1;
       }
       usleep(500000);
@@ -862,37 +887,14 @@ double Driver::GetBoardCurrent() {
 
   case VR_IR38263:
     {
-      uint8_t buf[2];
-      size_t len;
-      uint16_t bytesXfered;
-      int ret_val;
+      size_t len = 2;
+      uint8_t buf[len];
+      const uint8_t IR_READ_IOUT = 0x8c;
 
-      buf[0] = 0x8c; // READ_IOUT
-      len = 1;
-      ret_val = ftdi.i2c_TransmitX(1, 0, IR_I2C_ADDR, buf, len, bytesXfered);
+      int ret_val = PMBusRead(IR_READ_IOUT, len, buf);
       if (ret_val != 0) {
-	fprintf(stderr, "GetBoardCurrent send IR_READ_IOUT command read, %d\n",
+	fprintf(stderr, "GetBoardCurrent failed IR_READ_IOUT read, %d\n",
 		ret_val);
-	return 0.0;
-      }
-
-      if (len != size_t(bytesXfered)) {
-	fprintf(stderr, "GetBoardCurrent send IR_READ_IOUT command %d bytes transfered\n",
-		bytesXfered);
-	return 0.0;
-      }
-
-      len = 2;
-      ret_val = ftdi.i2c_ReceiveX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
-      if (ret_val != 0) {
-	fprintf(stderr, "GetBoardCurrent failed IR_READ_IOUT command read, %d\n",
-		ret_val);
-	return 0.0;
-      }
-
-      if (len != size_t(bytesXfered)) {
-	fprintf(stderr, "GetBoardCurrent IR_READ_IOUT command read returned %d bytes\n",
-		bytesXfered);
 	return 0.0;
       }
 
@@ -916,6 +918,22 @@ double Driver::GetPower() {
 
 int Driver::AutoConfigVr() {
 
+  // IR38263
+  const uint8_t IR_VOUT_OV_FAULT_LIMIT    = 0x40;
+  const uint8_t IR_VOUT_OV_FAULT_RESPONSE = 0x41;
+  const uint8_t IR_IOUT_OC_FAULT_LIMIT    = 0x46;
+  const uint8_t IR_IOUT_OC_FAULT_RESPONSE = 0x47;
+  const uint8_t IR_OT_FAULT_LIMIT         = 0x4f;
+  const uint8_t IR_OT_FAULT_RESPONSE      = 0x50;
+  const uint8_t IR_VIN_OV_FAULT_LIMIT     = 0x55;
+  const uint8_t IR_VIN_OV_FAULT_RESPONSE  = 0x56;
+  const uint8_t IR_MFR_MODEL              = 0x9a;
+  const uint8_t IR_MFR_WRITE_REG          = 0xd1;
+
+  // MAX20499
+  const uint8_t VR_ID                     = 0x00;
+  const uint8_t VR_COMP                   = 0x08;
+  
   vr = VR_none;
 
   int ret_val;
@@ -923,73 +941,84 @@ int Driver::AutoConfigVr() {
   // Query I2C to see if IR38263 is attached.
   uint8_t buf[4];
   size_t len;
-  uint16_t bytesXfered;
-
-  buf[0] = 0x9a; // MFR_MODEL command
-  len = 1;
-
-  ret_val = ftdi.i2c_TransmitX(1, 0, IR_I2C_ADDR, buf, len, bytesXfered);
-  if (ret_val != 0) {
-    fprintf(stderr, "AutoConfigVr failed send IR_MFR_MODEL command, %d\n",
-	    ret_val);
-    return 1;
-  }
-
-  if (len != size_t(bytesXfered)) {
-    fprintf(stderr, "AutoConfigVr send IR_MFR_MODEL command %d bytes transfered\n",
-	    bytesXfered);
-    return 1;
-  }
 
   len = 4;
-  ret_val = ftdi.i2c_ReceiveX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
+  ret_val = PMBusRead(IR_MFR_MODEL, len, buf);
   if (ret_val != 0) {
-    fprintf(stderr, "AutoConfigVr failed IR_MFR_MODEL command read, %d\n",
+    fprintf(stderr, "AutoConfigVr failed IR_MFR_MODEL read, %d\n",
 	    ret_val);
-    return 1;
-  }
-
-  if (len != size_t(bytesXfered)) {
-    fprintf(stderr, "AutoConfigVr IR_MFR_MODEL command read returned %d bytes\n",
-	    bytesXfered);
-    return 1;
+    return 0.0;
   }
 
   if (buf[0] == 0x03 && buf[1] == 0x65 && buf[2] == 0x00 && buf[3] == 0x00) {
     vr = VR_IR38263;
 
     // Set configuration to PMBus mode.
-    buf[0] = 0xd1; // MFR_WRITE_REG command
-    buf[1] = 0x75; // SVID_PVID_Mode register
-    buf[2] = 0x80; // bit 6 1=PVID mode, 0=PMBus mode
-    len = 3;
-    ret_val = ftdi.i2c_TransmitX(1, 1, IR_I2C_ADDR, buf, len, bytesXfered);
+    buf[0] = 0x75; // SVID_PVID_Mode register
+    buf[1] = 0x80; // bit 6 1=PVID mode, 0=PMBus mode
+    len = 2;
+
+    ret_val = PMBusWrite(IR_MFR_WRITE_REG, len, buf);
     if (ret_val != 0) {
-      fprintf(stderr, "AutoConfigVr failed PMBUs config, %d\n",
+      fprintf(stderr, "AutoConfigVr failed IR_MFR_WRITE_REG write, %d\n",
 	      ret_val);
       return 1;
     }
 
-    if (len != size_t(bytesXfered)) {
-      fprintf(stderr, "AutoConfigVr failed PMBus config with %d bytes transfered\n",
-	      bytesXfered);
-      return 1;
-    }
+    int vin_ov = int(20.0 * 4.0);    // 20 V
+    uint8_t vin_ov_response = 0x80;  // shutdown
+    int vout_ov = int(1.2 * 256.0);  // 1.2 V
+    uint8_t vout_ov_response = 0x80; // shutdown
+    int iout_oc = int(30.0 * 2.0);   // 1.2 V
+    uint8_t iout_oc_response = 0xb8; // pulse by pulse for 8 cycles...
+    int ot = 125;                    // 125 C
+    uint8_t ot_response = 0x80;      // shutdown
+
+    // Program limits.
+    buf[0] = uint8_t(vin_ov & 0xff);
+    buf[1] = uint8_t((vin_ov >> 8) | 0xf0);
+    PMBusWrite(IR_VIN_OV_FAULT_LIMIT, 2, buf);
+
+    buf[0] = uint8_t(vout_ov & 0xff);
+    buf[1] = uint8_t(vout_ov >> 8);
+    PMBusWrite(IR_VOUT_OV_FAULT_LIMIT, 2, buf);
+
+    buf[0] = uint8_t(iout_oc & 0xff);
+    buf[1] = uint8_t((iout_oc >> 8) | 0xf8);
+    PMBusWrite(IR_IOUT_OC_FAULT_LIMIT, 2, buf);
+
+    buf[0] = uint8_t(ot & 0xff);
+    buf[1] = uint8_t(ot >> 8);
+    PMBusWrite(IR_OT_FAULT_LIMIT, 2, buf);
+
+    // Program responses.
+    PMBusWrite(IR_VIN_OV_FAULT_RESPONSE,  1, &vin_ov_response);
+    PMBusWrite(IR_VOUT_OV_FAULT_RESPONSE, 1, &vout_ov_response);
+    PMBusWrite(IR_IOUT_OC_FAULT_RESPONSE, 1, &iout_oc_response);
+    PMBusWrite(IR_OT_FAULT_RESPONSE,      1, &ot_response);
 
     return 0;
   }
 
   // Query I2C to see if MAX20499 is attached.
   len = 1;
-  ret_val = I2CReadReg(VR_I2C_ADDR, 0x00, len, buf);
+  ret_val = I2CReadReg(VR_I2C_ADDR, VR_ID, len, buf);
   if (ret_val != 0) {
     fprintf(stderr, "AutoConfigVr failed read VR_ID register, %d\n",
-	    ret_val);
+	    ret_val); 
     return 1;
   }
 
   if ((buf[0] >> 4) == 0x07) { // compare to "DEV" field
     vr = VR_MAX20499;
+
+    ret_val = I2CWriteReg(VR_I2C_ADDR, VR_COMP, 0xe4);
+    if (ret_val != 0) {
+      fprintf(stderr, "AutoConfigVr failed to write COMP register, %d\n",
+	      ret_val);
+      return 1;
+    }
+
     return 0;
   }
 

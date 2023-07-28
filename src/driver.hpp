@@ -122,6 +122,8 @@ public:
   int SetBoardVoltage(double voltage);
   double GetBoardCurrent();
   double GetPower();
+  int PMBusWrite(uint8_t cmd, size_t len, uint8_t* data);
+  int PMBusRead(uint8_t cmd, size_t len, uint8_t* data);
   int AutoConfigVr();
 
   FtdiDriver ftdi;
