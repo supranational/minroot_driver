@@ -1,8 +1,8 @@
+#!/bin/sh
+
 # Copyright Supranational LLC
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
-
-#!/bin/bash
 
 set -e
 set -x
@@ -48,12 +48,12 @@ case `uname -s` in
         ;;
 esac
 
-if [ ! -d sloth-pasta/src ]; then
+if [ ! -d semolina/src ]; then
     git submodule init
     git submodule update
 fi
 
-${CC:-cc} ${CFLAGS} -g -O -c sloth-pasta/src/pasta_vdf.c sloth-pasta/src/assembly.S
+${CC:-cc} ${CFLAGS} -g -O -c semolina/src/pasta_vdf.c semolina/src/assembly.S
 trap 'rm -f pasta_vdf.o assembly.o' 0
 rm -f minroot
 ${CXX:-c++} ${CXXFLAGS} -std=c++11 -pthread -g -O -o minroot -Wall -Wextra \
