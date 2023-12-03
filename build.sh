@@ -1,8 +1,8 @@
+#!/bin/sh
+
 # Copyright Supranational LLC
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
-
-#!/bin/bash
 
 set -e
 set -x
@@ -40,20 +40,26 @@ case `uname -s` in
         if [ -f libft4222/build/libgmp.a ]; then
             CFLAGS="-arch x86_64 -arch arm64"
             CXXFLAGS="-arch x86_64 -arch arm64"
-        elif [ `sysctl -n hw.optional.adx 2>/dev/null` = "1" ]; then
-            CFLAGS="-D__ADX__"
+        else
+            if [ "`sysctl -n hw.optional.adx 2>/dev/null`" = "1" ]; then
+                CFLAGS="-D__ADX__"
+            fi
+            if pkg-config gmp 2>/dev/null; then
+                CXXFLAGS="`pkg-config gmp --cflags`"
+                extra_ldflags="`pkg-config gmp --libs-only-L` $extra_ldflags"
+            fi
         fi
         ;;
     *)  echo "Unsupported OS"; exit 1
         ;;
 esac
 
-if [ ! -d sloth-pasta/src ]; then
+if [ ! -d semolina/src ]; then
     git submodule init
     git submodule update
 fi
 
-${CC:-cc} ${CFLAGS} -g -O -c sloth-pasta/src/pasta_vdf.c sloth-pasta/src/assembly.S
+${CC:-cc} ${CFLAGS} -g -O -c semolina/src/pasta_vdf.c semolina/src/assembly.S
 trap 'rm -f pasta_vdf.o assembly.o' 0
 rm -f minroot
 ${CXX:-c++} ${CXXFLAGS} -std=c++11 -pthread -g -O -o minroot -Wall -Wextra \
