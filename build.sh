@@ -40,8 +40,14 @@ case `uname -s` in
         if [ -f libft4222/build/libgmp.a ]; then
             CFLAGS="-arch x86_64 -arch arm64"
             CXXFLAGS="-arch x86_64 -arch arm64"
-        elif [ `sysctl -n hw.optional.adx 2>/dev/null` = "1" ]; then
-            CFLAGS="-D__ADX__"
+        else
+            if [ "`sysctl -n hw.optional.adx 2>/dev/null`" = "1" ]; then
+                CFLAGS="-D__ADX__"
+            fi
+            if pkg-config gmp 2>/dev/null; then
+                CXXFLAGS="`pkg-config gmp --cflags`"
+                extra_ldflags="`pkg-config gmp --libs-only-L` $extra_ldflags"
+            fi
         fi
         ;;
     *)  echo "Unsupported OS"; exit 1
