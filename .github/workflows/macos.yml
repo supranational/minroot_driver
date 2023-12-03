@@ -24,7 +24,7 @@ jobs:
       shell: bash
       run: |
         if [ ! -f libft4222/build/libgmp.a ]; then
-          curl -sSf https://gmplib.org/download/gmp/gmp-6.2.1.tar.xz | tar xf -
+          curl -sSf https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz | tar xf -
           cd gmp-6.2.1
           make distclean || true
           env CFLAGS="-arch arm64" ./configure --disable-shared --host=aarch64-apple-darwin
